@@ -1,9 +1,10 @@
+import { getCustomRepository, getRepository, In } from 'typeorm';
 import csvParse from 'csv-parse';
 import fs from 'fs';
-import { getCustomRepository, getRepository, In } from 'typeorm';
 
-import Category from '../models/Category';
 import Transaction from '../models/Transaction';
+import Category from '../models/Category';
+
 import TransactionsRepository from '../repositories/TransactionsRepository';
 
 interface CSVTransaction {
@@ -15,16 +16,16 @@ interface CSVTransaction {
 
 class ImportTransactionsService {
   async execute(filePath: string): Promise<Transaction[]> {
-    const transactionsRepository = getCustomRepository(TransactionsRepository);
+    const transactionRepository = getCustomRepository(TransactionsRepository);
     const categoriesRepository = getRepository(Category);
 
     const contactsReadStream = fs.createReadStream(filePath);
 
-    const parses = csvParse({
+    const parsers = csvParse({
       from_line: 2,
     });
 
-    const parseCSV = contactsReadStream.pipe(parses);
+    const parseCSV = contactsReadStream.pipe(parsers);
 
     const transactions: CSVTransaction[] = [];
     const categories: string[] = [];
@@ -37,8 +38,10 @@ class ImportTransactionsService {
       if (!title || !type || !value) return;
 
       categories.push(category);
+
       transactions.push({ title, type, value, category });
     });
+
     await new Promise(resolve => parseCSV.on('end', resolve));
 
     const existentCategories = await categoriesRepository.find({
@@ -47,7 +50,7 @@ class ImportTransactionsService {
       },
     });
 
-    const existentCategoriesTitles = await existentCategories.map(
+    const existentCategoriesTitles = existentCategories.map(
       (category: Category) => category.title,
     );
 
@@ -65,7 +68,7 @@ class ImportTransactionsService {
 
     const finalCategories = [...newCategories, ...existentCategories];
 
-    const createdTransactions = transactionsRepository.create(
+    const createdTransactions = transactionRepository.create(
       transactions.map(transaction => ({
         title: transaction.title,
         type: transaction.type,
@@ -76,7 +79,7 @@ class ImportTransactionsService {
       })),
     );
 
-    await transactionsRepository.save(createdTransactions);
+    await transactionRepository.save(createdTransactions);
 
     await fs.promises.unlink(filePath);
 
